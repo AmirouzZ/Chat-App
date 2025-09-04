@@ -8,7 +8,7 @@ export const users = [
     },
     {
         id: 2,
-        name: "Ahmad Khallof",
+        name: "Ahmad Khaloof",
     },
 ];
 
