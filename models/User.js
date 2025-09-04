@@ -4,11 +4,11 @@ import { JWT_SECRET } from "../config/index.js";
 export const users = [
     {
         id: 1,
-        name: "ahmad",
+        name: "Ahmad Sliman",
     },
     {
         id: 2,
-        name: "mhammad",
+        name: "Ahmad Khallof",
     },
 ];
 
