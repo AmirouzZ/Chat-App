@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Chat App</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/chat.js"></script>
+    <style>
+        .connection-status {
+            display: flex;
+            align-items: center;
+            margin-left: 15px;
+            font-size: 0.9rem;
+        }
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-connected {
+            background-color: #4CAF50;
+        }
+        .status-connecting {
+            background-color: #FFC107;
+        }
+        .status-disconnected {
+            background-color: #F44336;
+        }
+        .user-id {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-left: 10px;
+        }
+        .typing-indicator {
+            padding: 5px 15px;
+            font-style: italic;
+            color: #666;
+            font-size: 0.9rem;
+            height: 25px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .user-details {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+        .user-list {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .user-option {
+            padding: 10px 15px;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-name {
+            font-weight: bold;
+        }
+        .login-prompt h2 {
+            margin-bottom: 15px;
+            color: #4a6fa5;
+        }
+        .login-prompt p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+        /* Message animations */
+        @keyframes messageSlide {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .message {
+            animation: messageSlide 0.3s ease-out;
+        }
+        /* Message status indicators */
+        .message.sent .message-status {
+            font-size: 0.7rem;
+            text-align: right;
+            margin-top: 4px;
+            color: #666;
+        }
+        /* Timestamp styling */
+        .message-time {
+            font-size: 0.7rem;
+            color: #999;
+            margin-top: 4px;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .header-left {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .user-details {
+                align-items: flex-start;
+            }
+            .user-id {
+                margin-left: 0;
+            }
+        }
+        @media (max-width: 480px) {
+            .user-info form {
+                flex-direction: column;
+                gap: 8px;
+            }
+            .user-info select, .user-info button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>Simple Chat App</h1>
+                <div class="connection-status" id="connection-status">
+                    <div class="status-indicator status-disconnected"></div>
+                    <span>Disconnected</span>
+                </div>
+            </div>
+            <div class="user-info">
+                <% if (user) { %>
+                    <div class="user-details">
+                        <span>Welcome, <strong><%= user.name %></strong></span>
+                        <span class="user-id">ID: <%= user.id %></span>
+                    </div>
+                    <button id="logout-btn">Logout</button>
+                <% } else { %>
+                    <form id="user-form">
+                        <select id="user-select" required>
+                            <option value="">Select User</option>
+                            <% users.forEach(function(user) { %>
+                                <option value="<%= user.id %>"><%= user.name %></option>
+                            <% }); %>
+                        </select>
+                        <button type="submit">Login</button>
+                    </form>
+                <% } %>
+            </div>
+        </header>
+
+        <main>
+            <% if (user) { %>
+                <div class="chat-container">
+                    <div class="messages" id="messages">
+                        <div class="message system-message">
+                            Welcome to the chat! Messages you send will appear here.
+                        </div>
+                    </div>
+                    <div class="typing-indicator" id="typing-indicator" style="display: none;"></div>
+                    <form class="message-form" id="message-form">
+                        <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off" disabled>
+                        <button type="submit" id="send-button" disabled>Send</button>
+                    </form>
+                </div>
+            <% } else { %>
+                <div class="login-prompt">
+                    <h2>Welcome to Simple Chat</h2>
+                    <p>Please select a user to start chatting</p>
+                    <div class="user-list">
+                        <% users.forEach(function(user) { %>
+                            <div class="user-option">
+                                <span class="user-name"><%= user.name %></span>
+                                <span class="user-id">ID: <%= user.id %></span>
+                            </div>
+                        <% }); %>
+                    </div>
+                </div>
+            <% } %>
+        </main>
+    </div>
+
+    <script>
+        // Initialize debug mode for Socket.IO
+        localStorage.debug = 'socket.io-client:socket';
+
+        // Update connection status UI
+        function updateConnectionStatus(status, message) {
+            const statusElem = document.getElementById('connection-status');
+            const indicator = statusElem.querySelector('.status-indicator');
+            const text = statusElem.querySelector('span');
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
+            
+            // Remove all status classes
+            indicator.classList.remove('status-connected', 'status-connecting', 'status-disconnected');
+            
+            // Apply appropriate class and text
+            switch(status) {
+                case 'connected':
+                    indicator.classList.add('status-connected');
+                    text.textContent = message || 'Connected';
+                    if (messageInput) messageInput.disabled = false;
+                    if (sendButton) sendButton.disabled = false;
+                    break;
+                case 'connecting':
+                    indicator.classList.add('status-connecting');
+                    text.textContent = message || 'Connecting...';
+                    if (messageInput) messageInput.disabled = true;
+                    if (sendButton) sendButton.disabled = true;
+                    break;
+                case 'disconnected':
+                    indicator.classList.add('status-disconnected');
+                    text.textContent = message || 'Disconnected';
+                    if (messageInput) messageInput.disabled = true;
+                    if (sendButton) sendButton.disabled = true;
+                    break;
+            }
+        }
+
+        // Initialize connection status
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if user is logged in but not yet connected
+            <% if (user) { %>
+                updateConnectionStatus('connecting', 'Establishing connection...');
+            <% } else { %>
+                updateConnectionStatus('disconnected', 'Please log in to connect');
+            <% } %>
+        });
+    </script>
+</body>
+</html>
